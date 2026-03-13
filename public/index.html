@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude Code Office</title>
+  <style>
+    /* ── GBA pixel palette ────────────────────────────────────────── */
+    :root {
+      --gba-dark:    #0f0f23;
+      --gba-mid:     #1a1a3a;
+      --gba-light:   #2d2d5e;
+      --gba-accent:  #5bc8af;
+      --gba-gold:    #f8c84c;
+      --gba-white:   #e8f0e8;
+      --gba-red:     #e84c6c;
+      --gba-green:   #48e870;
+      --gba-text:    #c8d8c8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; image-rendering: pixelated; }
+
+    body {
+      background: var(--gba-dark);
+      color: var(--gba-text);
+      font-family: 'Courier New', Courier, monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+
+    /* ── GBA Device Shell ─────────────────────────────────────────── */
+    .gba-shell {
+      background: linear-gradient(135deg, #2a2a5e 0%, #1a1a3e 100%);
+      border-radius: 16px 16px 40px 40px;
+      padding: 24px 32px 40px;
+      box-shadow: 0 0 0 2px #3a3a7e, 0 8px 40px rgba(0,0,0,0.8),
+                  inset 0 1px 0 rgba(255,255,255,0.1);
+      width: 100%;
+      max-width: 640px;
+      position: relative;
+    }
+
+    /* GBA title bar */
+    .gba-brand {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .gba-brand-text {
+      font-size: 10px;
+      letter-spacing: 0.3em;
+      color: #5050a0;
+      text-transform: uppercase;
+    }
+    .gba-power {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--gba-green);
+      box-shadow: 0 0 6px var(--gba-green);
+      animation: powerblink 3s ease-in-out infinite;
+    }
+    @keyframes powerblink { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    /* ── Screen ───────────────────────────────────────────────────── */
+    .screen-bezel {
+      background: #0a0a18;
+      border-radius: 8px;
+      padding: 12px;
+      border: 2px solid #1a1a40;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(91,200,175,0.1);
+    }
+
+    .screen {
+      width: 100%;
+      aspect-ratio: 3/2;  /* GBA 240:160 */
+      background: #0d1a0d;
+      position: relative;
+      overflow: hidden;
+      border-radius: 4px;
+    }
+
+    /* Game canvas */
+    #gameCanvas {
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      display: block;
+    }
+
+    /* Scanline overlay */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.15) 2px,
+        rgba(0,0,0,0.15) 4px
+      );
+      pointer-events: none;
+      border-radius: 4px;
+    }
+
+    /* Screen glare */
+    .glare {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 40%;
+      background: linear-gradient(to bottom, rgba(255,255,255,0.04), transparent);
+      pointer-events: none;
+    }
+
+    /* ── Status HUD ───────────────────────────────────────────────── */
+    #hud {
+      position: absolute;
+      bottom: 8px; left: 8px; right: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      pointer-events: none;
+    }
+
+    .hud-box {
+      background: rgba(0,0,0,0.7);
+      border: 1px solid rgba(91,200,175,0.3);
+      padding: 4px 8px;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      line-height: 1.6;
+      color: var(--gba-text);
+      min-width: 120px;
+    }
+
+    .hud-name {
+      color: var(--gba-gold);
+      font-size: 10px;
+      font-weight: bold;
+    }
+
+    .hud-state {
+      color: var(--gba-accent);
+    }
+
+    .hud-activity {
+      font-size: 8px;
+      color: #888;
+      max-width: 160px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* State indicator dot */
+    .state-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    .dot-idle    { background: #888; }
+    .dot-thinking { background: var(--gba-gold); box-shadow: 0 0 4px var(--gba-gold); animation: dotpulse 1s infinite; }
+    .dot-coding  { background: var(--gba-green); box-shadow: 0 0 4px var(--gba-green); animation: dotpulse 0.5s infinite; }
+    @keyframes dotpulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    /* ── Controls bar ─────────────────────────────────────────────── */
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 8px 0;
+    }
+
+    .dpad {
+      display: grid;
+      grid-template-columns: repeat(3, 18px);
+      grid-template-rows: repeat(3, 18px);
+      gap: 1px;
+    }
+    .dpad-btn {
+      background: #1a1a3a;
+      border: 1px solid #2a2a5e;
+      border-radius: 2px;
+    }
+    .dpad-btn.center { background: #0f0f1f; }
+
+    .ab-buttons {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .ab-btn {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      border: 1px solid #3a3a7e;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 8px; color: #5050a0;
+    }
+    .ab-btn.a { background: #2a1a3e; color: #a050e0; }
+    .ab-btn.b { background: #1a2a1e; color: #50a060; }
+
+    .start-select {
+      display: flex;
+      gap: 6px;
+    }
+    .ss-btn {
+      width: 24px; height: 8px;
+      background: #1a1a3a;
+      border-radius: 4px;
+      border: 1px solid #2a2a5e;
+    }
+
+    /* ── Info panel ───────────────────────────────────────────────── */
+    .info-panel {
+      width: 100%;
+      max-width: 640px;
+      margin-top: 24px;
+    }
+
+    .panel-title {
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      color: var(--gba-accent);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(to right, var(--gba-accent), transparent);
+      opacity: 0.3;
+    }
+
+    .sessions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 8px;
+    }
+
+    .session-card {
+      background: var(--gba-mid);
+      border: 1px solid var(--gba-light);
+      padding: 12px;
+      font-size: 11px;
+      line-height: 1.6;
+      transition: border-color 0.3s;
+    }
+    .session-card.active-coding  { border-color: var(--gba-green); }
+    .session-card.active-thinking { border-color: var(--gba-gold); }
+
+    .session-agent {
+      color: var(--gba-gold);
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+
+    .session-model  { color: var(--gba-accent); font-size: 10px; }
+    .session-status { font-size: 10px; color: #888; margin-top: 4px; }
+    .session-task   { font-size: 10px; color: var(--gba-text); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .no-sessions {
+      color: #555;
+      font-size: 11px;
+      padding: 16px 0;
+      text-align: center;
+    }
+
+    /* ── Config form ─────────────────────────────────────────────── */
+    .config-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+    .config-row input {
+      flex: 1;
+      background: var(--gba-mid);
+      border: 1px solid var(--gba-light);
+      color: var(--gba-text);
+      padding: 6px 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      outline: none;
+      min-width: 160px;
+    }
+    .config-row input:focus { border-color: var(--gba-accent); }
+    .config-row input::placeholder { color: #444; }
+    .config-row button {
+      background: var(--gba-accent);
+      color: #000;
+      border: none;
+      padding: 6px 14px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+    .config-row button:hover { opacity: 0.85; }
+
+    .status-bar {
+      margin-top: 12px;
+      font-size: 10px;
+      color: #555;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-bar .live-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #555;
+    }
+    .status-bar.connected .live-dot { background: var(--gba-green); box-shadow: 0 0 4px var(--gba-green); }
+    .status-bar.connected { color: var(--gba-text); }
+  </style>
+</head>
+<body>
+
+  <!-- GBA Device -->
+  <div class="gba-shell">
+    <div class="gba-brand">
+      <span class="gba-brand-text">Claude Code™ Advance</span>
+      <div class="gba-power"></div>
+    </div>
+
+    <!-- Screen -->
+    <div class="screen-bezel">
+      <div class="screen">
+        <canvas id="gameCanvas" width="240" height="160"></canvas>
+
+        <!-- HUD overlay -->
+        <div id="hud">
+          <div class="hud-box" id="hud-info">
+            <div class="hud-name" id="hud-agent">CLAUDE CODE</div>
+            <div class="hud-state" id="hud-state">
+              <span class="state-dot dot-idle" id="state-dot"></span>
+              <span id="state-text">IDLE</span>
+            </div>
+            <div class="hud-activity" id="hud-activity">Awaiting tasks...</div>
+          </div>
+          <div class="hud-box" style="text-align:right; min-width:80px;">
+            <div style="color:#555; font-size:8px;">SESSIONS</div>
+            <div style="color:var(--gba-gold); font-size:14px;" id="session-count">0</div>
+            <div style="color:#555; font-size:8px;" id="hud-time">--:--</div>
+          </div>
+        </div>
+
+        <div class="scanlines"></div>
+        <div class="glare"></div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <div class="dpad">
+        <div></div><div class="dpad-btn"></div><div></div>
+        <div class="dpad-btn"></div><div class="dpad-btn center"></div><div class="dpad-btn"></div>
+        <div></div><div class="dpad-btn"></div><div></div>
+      </div>
+      <div class="start-select">
+        <div class="ss-btn"></div>
+        <div class="ss-btn"></div>
+      </div>
+      <div class="ab-buttons">
+        <div class="ab-btn b">B</div>
+        <div class="ab-btn a">A</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live sessions panel -->
+  <div class="info-panel">
+    <div class="panel-title">Live Sessions</div>
+    <div class="sessions-grid" id="sessions-grid">
+      <div class="no-sessions">Connect to OpenClaw to see live sessions</div>
+    </div>
+
+    <!-- Config -->
+    <div class="config-row">
+      <input type="text" id="gateway-url" placeholder="http://localhost:18789" value="http://127.0.0.1:18789" />
+      <input type="password" id="gateway-token" placeholder="Gateway token (optional)" />
+      <button onclick="connectGateway()">Connect</button>
+    </div>
+    <div class="status-bar" id="status-bar">
+      <div class="live-dot"></div>
+      <span id="status-text">Not connected</span>
+    </div>
+  </div>
+
+  <script src="office.js"></script>
+</body>
+</html>
