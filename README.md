@@ -2,7 +2,15 @@
 
 GBA-style pixel art office that reflects live Claude Code session state. Built with Pixel Lab AI sprites + Canvas 2D.
 
-![GBA Office](public/sprites/office-bg.png)
+## Demo
+
+<video src="demo.mp4" controls width="960" style="max-width:100%">
+  <a href="demo.mp4">▶ Watch demo (idle → thinking → coding)</a>
+</video>
+
+> Full state transitions: **IDLE** (cyan glow) → **THINKING** (gold glow + thought bubble) → **CODING** (green glow + scrolling code + flying particles). 9s, 30fps, 960×640.
+
+---
 
 ## What it does
 
